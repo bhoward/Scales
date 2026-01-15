@@ -1,18 +1,18 @@
 type Time = Long // Double?
 
 trait Event {
-  def duration: Extent[Time]
+  def duration: Time
 
   def before(that: Event): Event = {
-    CompoundEvent(this.duration.seqHi(that.duration), this, that.delay(this.duration.len))
+    CompoundEvent(this.duration + that.duration, this, that.delay(this.duration))
   }
 
   def after(that: Event): Event = {
-    CompoundEvent(this.duration.seqLo(that.duration), this, that.delay(-this.duration.len))
+    CompoundEvent(this.duration, this, that.delay(-that.duration))
   }
 
   def during(that: Event): Event = {
-    CompoundEvent(this.duration.par(that.duration), this, that)
+    CompoundEvent(this.duration max that.duration, this, that)
   }
 
   def delay(time: Time): Event = {
@@ -27,22 +27,22 @@ trait PrimEvent extends Event {
 }
 
 case class DemoEvent(name: String) extends PrimEvent {
-  val duration = Extent(0, 1)
+  val duration = 1
 
   override def toString: String = name
 }
 
-case class CompoundEvent(duration: Extent[Time], events: Event*) extends Event {
+case class CompoundEvent(duration: Time, events: Event*) extends Event {
   override def before(that: Event): Event = {
-    CompoundEvent(this.duration.seqHi(that.duration), this.events :+ that.delay(this.duration.hi)*)
+    CompoundEvent(this.duration + that.duration, this.events :+ that.delay(this.duration)*)
   }
 
   override def after(that: Event): Event = {
-    CompoundEvent(this.duration.seqLo(that.duration), this.events :+ that.delay(-that.duration.hi)*)
+    CompoundEvent(this.duration, this.events :+ that.delay(-that.duration)*)
   }
 
   override def during(that: Event): Event = {
-    CompoundEvent(this.duration.par(that.duration), this.events :+ that*)
+    CompoundEvent(this.duration max that.duration, this.events :+ that*)
   }
 
   def render(start: Time): Seq[(Time, PrimEvent)] = {
@@ -51,7 +51,7 @@ case class CompoundEvent(duration: Extent[Time], events: Event*) extends Event {
 }
 
 case class DelayEvent(event: Event, time: Time) extends Event {
-  override def duration: Extent[Long] = event.duration
+  override def duration: Time = event.duration
 
   override def before(that: Event): Event = {
     DelayEvent(this.event.before(that), time)
