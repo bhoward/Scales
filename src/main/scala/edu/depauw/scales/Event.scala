@@ -19,14 +19,29 @@ trait Event {
     DelayEvent(this, time)
   }
 
-  def render(start: Time): Seq[(Time, PrimEvent)]
+  def render(start: Time)(using context: Context): Seq[(Time, PrimEvent)]
 }
 
 trait PrimEvent extends Event {
-  def render(start: Time): Seq[(Time, PrimEvent)] = Seq(start -> this)
+  def render(start: Time)(using context: Context): Seq[(Time, PrimEvent)] = Seq(start -> this)
 }
 
-case class DemoEvent(name: String) extends PrimEvent {
+type TC = (Time, Context)
+
+class DemoEvent(val name: TC ?=> String) extends PrimEvent {
+  val duration = 1
+
+  override def render(start: Time)(using context: Context): Seq[(Long, PrimEvent)] = {
+    given TC = (start, context)
+    Seq(start -> ResolvedDemoEvent(name + context.demo)) // evaluate name here, with context
+  }
+}
+
+object DemoEvent {
+  def apply(name: TC ?=> String): DemoEvent = new DemoEvent(name)
+}
+
+case class ResolvedDemoEvent(name: String) extends PrimEvent {
   val duration = 1
 
   override def toString: String = name
@@ -45,7 +60,7 @@ case class CompoundEvent(duration: Time, events: Event*) extends Event {
     CompoundEvent(this.duration max that.duration, this.events :+ that*)
   }
 
-  def render(start: Time): Seq[(Time, PrimEvent)] = {
+  def render(start: Time)(using context: Context): Seq[(Time, PrimEvent)] = {
     events.flatMap(_.render(start))
   }
 }
@@ -69,15 +84,19 @@ case class DelayEvent(event: Event, time: Time) extends Event {
     DelayEvent(this.event, this.time + time)
   }
 
-  def render(start: Time): Seq[(Time, PrimEvent)] = {
+  def render(start: Time)(using context: Context): Seq[(Time, PrimEvent)] = {
     this.event.render(start + time)
   }
 }
 
 @main def demo(): Unit = {
+  given global: Context = new Context() // TODO
+
+  val p = Param((t: Time) => if t == 0 then "B0" else "B1")
+
   val a = DemoEvent("A")
-  val b = DemoEvent("B")
-  val c = DemoEvent("C")
+  val b = DemoEvent(p.v)
+  val c = DemoEvent((tc: TC) ?=> tc._1.toString)
 
   println(a.render(0))
   println(a.before(b).render(0))
