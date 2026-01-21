@@ -1,3 +1,5 @@
+package edu.depauw.scales
+
 type Time = Long // Double?
 
 trait Event {
@@ -23,28 +25,30 @@ trait Event {
 }
 
 trait PrimEvent extends Event {
-  def render(start: Time)(using context: Context): Seq[(Time, PrimEvent)] = Seq(start -> this)
 }
 
-type TC = (Time, Context)
+type TimeContext = (Time, Context)
 
-class DemoEvent(val name: TC ?=> String) extends PrimEvent {
+class DemoEvent(val name: TimeContext ?=> String) extends PrimEvent {
   val duration = 1
 
   override def render(start: Time)(using context: Context): Seq[(Long, PrimEvent)] = {
-    given TC = (start, context)
+    given TimeContext = (start, context)
+
     Seq(start -> ResolvedDemoEvent(name + context.demo)) // evaluate name here, with context
   }
 }
 
 object DemoEvent {
-  def apply(name: TC ?=> String): DemoEvent = new DemoEvent(name)
+  def apply(name: TimeContext ?=> String): DemoEvent = new DemoEvent(name)
 }
 
 case class ResolvedDemoEvent(name: String) extends PrimEvent {
   val duration = 1
 
-  override def toString: String = name
+  override def render(start: Time)(using context: Context): Seq[(Long, PrimEvent)] = {
+    Seq(start -> this)
+  }
 }
 
 case class CompoundEvent(duration: Time, events: Event*) extends Event {
@@ -90,13 +94,17 @@ case class DelayEvent(event: Event, time: Time) extends Event {
 }
 
 @main def demo(): Unit = {
-  given global: Context = new Context() // TODO
+  given global: Context = new Context()
 
-  val p = Param((t: Time) => if t == 0 then "B0" else "B1")
+  val joe = new Tag(default = "foo")
+  global.put(joe, "bar")
+  val fred = new Tag(default = "baz")
+
+  val p = Param(t => if t == 0 then "B0" else "B1")
 
   val a = DemoEvent("A")
   val b = DemoEvent(p.v)
-  val c = DemoEvent((tc: TC) ?=> tc._1.toString)
+  val c = DemoEvent(tc ?=> tc._1.toString)
 
   println(a.render(0))
   println(a.before(b).render(0))
@@ -106,5 +114,5 @@ case class DelayEvent(event: Event, time: Time) extends Event {
   println(x.render(0))
   println(y.render(0))
 
-  println(c.before(x).during(y).before(DemoEvent("D").before(DemoEvent("E"))).render(0))
+  println(c.before(x).during(y).before(DemoEvent(joe()).before(DemoEvent(fred()))).render(0))
 }
